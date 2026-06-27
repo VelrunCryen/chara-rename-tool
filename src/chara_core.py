@@ -168,14 +168,30 @@ class Action:
 
 # ---------- 收集与计划 ----------
 
+SKIP_DIRS = {'非角色卡', '.git', '.idea', '__pycache__'}
+
+
 def collect_items(folder, recursive=True):
     """返回 [(folder, fn, info)]"""
     out = []
     if recursive:
-        for f, _, files in os.walk(folder):
-            for fn in sorted(files):
-                if fn.lower().endswith('.png') and not fn.startswith('.'):
-                    out.append((f, fn, parse_card(os.path.join(f, fn))))
+        # 自实现的递归，跳过工具自身产生的目录与隐藏目录，
+        # 避免「非角色卡/」套娃再次被扫入。
+        stack = [folder]
+        while stack:
+            cur = stack.pop()
+            try:
+                names = sorted(os.listdir(cur))
+            except Exception:
+                continue
+            for fn in names:
+                full = os.path.join(cur, fn)
+                if os.path.isdir(full):
+                    if fn in SKIP_DIRS or fn.startswith('.'):
+                        continue
+                    stack.append(full)
+                elif fn.lower().endswith('.png') and not fn.startswith('.'):
+                    out.append((cur, fn, parse_card(full)))
     else:
         for fn in sorted(os.listdir(folder)):
             if fn.lower().endswith('.png') and not fn.startswith('.'):
@@ -234,16 +250,34 @@ def build_plan(items, move_nochara=False):
                                       'SAME' if target == fn else 'RENAME'))
                 continue
 
+            # 多成员：先判 SAME 保护（避免原本已是合理名却被强加后缀）。
+            # 期望名 = key.png 或 key + ' ' + 版本号 + '.png' 或 key + ' (N).png'
             vers = [(fn, version_token(info) or '', info) for fn, info in members]
             assigned = [None] * len(vers)
-            used_vers = set()
 
+            # 第一轮：SAME 保护——已是合理目标名的卡片维持原名
             for i, (fn, v, info) in enumerate(vers):
-                if v and v not in used_vers:
-                    assigned[i] = (fn, _unique(f"{key} {v}.png", used_targets))
-                    used_vers.add(v)
+                expected = (key + '.png') if not v else f"{key} {v}.png"
+                if fn == expected:
+                    # fn 已是期望名 → 占着不动（仍保留在 used_targets）
+                    assigned[i] = (fn, fn)     # 视为 SAME
 
+            # 第二轮：按版本号分配剩余成员（每个版本仅一首轮。版本相同时进入第三轮）
+            used_vers = set(a[1] for a in assigned if a is not None)
+            for i, (fn, v, info) in enumerate(vers):
+                if assigned[i] is not None:
+                    continue
+                if v and v not in used_vers:
+                    used_vers.add(v)
+                    used_targets.discard(fn)   # 改名，腾出原 fn
+                    assigned[i] = (fn, _unique(f"{key} {v}.png", used_targets))
+
+            # 第三轮：无版本号 / 版本号重复的成员，按「原名是否带 key 前缀 + (N) 形式」保留，
+            # 否则从最小可用 (N) 序号分配
             remaining = [i for i, a in enumerate(assigned) if a is None]
+            for i in remaining:
+                used_targets.discard(vers[i][0])
+            # 检查 remaining 中是否所有 stem 都形如「key」、「key (...)」且互不相同
             stems = [os.path.splitext(vers[i][0])[0] for i in remaining]
             all_diff = len(set(stems)) == len(stems)
             all_prefixed = all(s == key or s.startswith(key + ' ') or
@@ -252,9 +286,17 @@ def build_plan(items, move_nochara=False):
                 for i in remaining:
                     assigned[i] = (vers[i][0], _unique(vers[i][0], used_targets))
             else:
-                base = f"{key} (2).png"
+                # 找最小可用编号
+                n = 2
                 for i in remaining:
-                    assigned[i] = (vers[i][0], _unique(base, used_targets))
+                    while True:
+                        cand = f"{key} ({n}).png"
+                        if cand not in used_targets:
+                            used_targets.add(cand)
+                            assigned[i] = (vers[i][0], cand)
+                            n += 1
+                            break
+                        n += 1
 
             for fn, target in assigned:
                 actions.append(Action(folder, fn, target,
