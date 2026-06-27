@@ -1,27 +1,28 @@
-# 角色卡批量重命名工具
+# CharaRenameTool
 
-让 SillyTavern 角色卡（PNG 内嵌 V2/V3 JSON）按 **世界书名** 批量重命名的小工具。
-适合小白用户，带图形界面、预览、撤销、日志功能。界面为浅色卡片式设计，分区清晰。
+按 SillyTavern 角色卡内嵌的 **世界书名（character_book.name）** 对 PNG 卡片进行批量重命名的小工具。
+
+角色卡通常以 `.png` 形式存在，立绘图片里嵌入了 JSON 格式的角色数据（Character Card V2/V3 规范）。本工具读取这些内嵌数据，把文件名统一改成对应的世界书名，方便整理与归档。同名多版本自动用 `version` 字段或名称中的版本号区分；无角色数据的纯立绘可一键归入「非角色卡」子文件夹。
+
+带图形界面，支持预览、撤销、日志，适合不熟悉命令行的用户。
 
 ## 目录结构
 
 ```
-chara_rename/
-├─ CharaRenameTool.exe      ← 双击即用（普通用户只用这个）
-├─ README.md                ← 本说明
-└─ src/                     ← 开发者才用，普通用户可忽略
-   ├─ chara_gui.py          GUI 主程序（tkinter 零依赖）
-   ├─ chara_core.py         核心重命名/解析/撤销逻辑
-   └─ run.bat               本机有 Python 时一键启动（调试用）
+chara-rename-tool/
+├─ CharaRenameTool.exe      ← 双击即用的主程序
+├─ README.md
+└─ src/                     ← 源码
+   ├─ chara_gui.py          GUI 主程序（tkinter，零第三方依赖）
+   ├─ chara_core.py         核心重命名 / 解析 / 撤销 / 日志逻辑
+   └─ run.bat               本机有 Python 时一键启动
 ```
 
 ## 使用方式
 
-### 普通用户（推荐）
-直接双击根目录的 **`CharaRenameTool.exe`**，无需安装 Python。
+**双击 `CharaRenameTool.exe`** 即可启动图形界面，无需安装 Python。
 
-### 开发者 / 本机已装 Python
-进入 `src/` 目录双击 `run.bat`，或命令行：
+如果本机已有 Python，也可进入 `src/` 目录双击 `run.bat`，或命令行：
 ```bash
 cd src
 python chara_gui.py
@@ -43,26 +44,20 @@ python chara_gui.py
 5. **撤销上次操作**：撤销当前文件夹上次批量重命名（依据隐藏的 `.rename_history.json`，仅还原成功的项）
 6. 日志会自动保存到目标目录：`重命名日志_时间戳.txt`
 
-## 重新打包成 exe（开发者用）
-
-需先 `pip install pyinstaller`，在 `src/` 目录执行：
-```bash
-cd src
-pyinstaller -F -w --noconfirm --name CharaRenameTool chara_gui.py
-```
-产物在 `src/dist/CharaRenameTool.exe`，把它剪切回根目录即可。
-
 ## 支持格式
+
 - PNG `tEXt` / `zTXt` / `iTXt` chunk 中的 `chara` 字段（base64 编码 JSON）
 - 兼容 Character Card V2 与 V3
 
 ## 安全机制
+
 - 重命名前置确认；命名冲突不覆盖，自动加 `(2)/(3)` 后缀
 - 生成 `.rename_history.json` 隐藏文件以支持撤销
 - 撤销失败的项会保留在历史中以便再次尝试，不会丢失记录
 - 生成带时间戳的日志 txt，便于事后核对
 
 ## 常见问题
+
 - **点开始没反应**：先点「选择文件夹」
 - **exe 闪退**：把 `CharaRenameTool.exe` 移出中文/空格特殊路径再试
 - **重命名了想还原**：选中同一文件夹，点「撤销上次操作」
