@@ -203,41 +203,35 @@ def build_plan(items, move_nochara=False):
                 continue
             groups[sanitize(info['book'])].append((fn, info))
 
-        # 计算"会被腾出的名字"：
-        # 只有「会被改名或移走的源文件」原名才会腾空；
-        # SAME / NOBOOK 保留原名 → 名字仍被占用。
-        # 但 SAME 的判定依赖目标是否与原名相等，这里先做第一次扫描猜测：
-        # 单成员 group 中 target == fn 视为 SAME（保留原名），
-        # 多成员 / 不同名则视为会腾出原名。
-        frees = set()
-        if move_nochara:
-            frees |= set(no_data)
-        for key, members in groups.items():
+        # used_targets：跟踪「已被占用」的目标名，初始为目录现存所有文件名。
+        # 当某源文件将被改名/移走时，它的原名会腾出 → 从 used_targets 移除，
+        # 这样别的卡片可以用它做目标；SAME/NOBOOK 不会改名 → 原名继续占用。
+        try:
+            used_targets = set(os.listdir(folder))
+        except Exception:
+            used_targets = set()
+
+        # 单成员 group：先判 SAME（target 与原名相等），避免被 _unique 错误加后缀。
+        # 多成员 group：本批次几乎都会改名，先把它们的源名一起腾出再分配。
+        for key, members in list(groups.items()):
             if len(members) == 1:
                 fn, info = members[0]
-                if sanitize(info.get('book', '')) + '.png' != fn:
-                    frees.add(fn)             # 将被改名，原名腾出
+                if key + '.png' == fn:
+                    # 已是目标名：SAME，原名继续占用（保留在 used_targets）
+                    actions.append(Action(folder, fn, fn, 'SAME'))
+                    groups.pop(key)
+                # 否则留到下面统一处理（RENAME）
             else:
                 for fn, info in members:
-                    frees.add(fn)            # 多张几乎都会改名，原名腾出
-
-        # 共享 used_targets：现存文件名减去将被腾出的源名，
-        # 让 _unique 自动给目标加后缀避开现有同名文件。
-        existing = set()
-        try:
-            existing = set(os.listdir(folder))
-        except Exception:
-            existing = set()
-        used_targets = existing - frees
+                    used_targets.discard(fn)    # 多张都会改名，腾出原名
 
         for key, members in groups.items():
             if len(members) == 1:
                 fn, info = members[0]
+                used_targets.discard(fn)       # 将改名，腾出原名
                 target = _unique(key + '.png', used_targets)
-                if target == fn:
-                    actions.append(Action(folder, fn, target, 'SAME'))
-                else:
-                    actions.append(Action(folder, fn, target, 'RENAME'))
+                actions.append(Action(folder, fn, target,
+                                      'SAME' if target == fn else 'RENAME'))
                 continue
 
             vers = [(fn, version_token(info) or '', info) for fn, info in members]
@@ -423,7 +417,7 @@ def write_log(folder, actions, stats):
         if a.status == 'RENAME':
             lines.append(f"[重命名] {a.fn}  ->  {a.target}")
         elif a.status == 'SAME':
-            lines.append(f"[无需改] {a.fn}")
+            lines.append(f"[未修改] {a.fn}")
         elif a.status == 'NOBOOK':
             lines.append(f"[无世界书] {a.fn}")
         elif a.status == 'NODATA_MOVE':

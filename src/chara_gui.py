@@ -349,7 +349,7 @@ class App(tk.Tk):
                         }.get(act.status, '')
                         label = {
                             'RENAME': f"[重命名] {act.fn}  ->  {act.target}",
-                            'SAME': f"[无需改] {act.fn}",
+                            'SAME': f"[未修改] {act.fn}",
                             'NOBOOK': f"[无世界书] {act.fn}",
                             'NODATA': f"[无数据跳过] {act.fn}",
                             'NODATA_MOVE': f"[非角色卡移走] {act.fn}  ->  {act.target}",
